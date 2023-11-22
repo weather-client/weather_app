@@ -37,7 +37,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   
   # The following package is required for Bluetooth Low Energy (BLE) functionality
-  flutter_blue_plus: ^1.14.11
+  flutter_blue_plus: 1.14.24
 
 dev_dependencies:
   flutter_test:

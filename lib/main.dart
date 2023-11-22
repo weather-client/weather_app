@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:weather_station/config.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,7 +19,7 @@ class MyApp extends StatelessWidget {
     FlutterBluePlus.setLogLevel(LogLevel.debug);
 
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: StationConfig.Title,
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -63,8 +65,10 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
   BluetoothDevice? _device;
-  final List<int> ServiceUUID = [0x00, 0x00, 0xff, 0xe0];
-  final List<int> CharacteristicUUID = [0x00, 0x00, 0xff, 0xe1];
+  BluetoothService? _service;
+  BluetoothCharacteristic? _characteristic;
+  StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
+  StreamSubscription<List<int>>? _valueSubscription;
 
   void _incrementCounter() {
     setState(() {
@@ -80,7 +84,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _enableBluetooth() async {
     // check adapter availability
     if (await FlutterBluePlus.isAvailable == false) {
-      log("Bluetooth not supported by this device");
+      log("Bluetooth not supported by this device", name: "Bluetooth");
       return;
     }
 
@@ -103,6 +107,9 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _scanBluetoothAndConnect() async {
+    // check adapter state before scanning
+    _enableBluetooth();
+
     if (_device != null) {
       await _device!.disconnect();
       _device = null;
@@ -111,25 +118,30 @@ class _MyHomePageState extends State<MyHomePage> {
     // Setup Listener for scan results
     // device not found? see "Common Problems" in the README
     var subscription = FlutterBluePlus.scanResults.listen((results) async {
+      if (_device != null) {
+        return;
+      }
       for (ScanResult r in results) {
         if (r.device.localName.isEmpty) {
           continue;
         }
-        if (r.device.localName == "WeatherStation") {
-          log("Found WeatherStation");
+        if (r.device.localName == StationConfig.BLEDeviceName) {
+          log('Found BLE device -> Name: ${r.device.localName}, Type: ${r.device.type}',
+              name: 'Bluetooth');
           _device = r.device;
           await FlutterBluePlus.stopScan();
+          return;
         }
-        log('${r.device.localName} found! rssi: ${r.rssi}');
+        log('${r.device.localName} found! rssi: ${r.rssi}', name: 'Bluetooth');
       }
     });
 
     // Start scanning
-    log("Start scanning");
+    log("Start scanning", name: "Bluetooth");
     await FlutterBluePlus.startScan(timeout: Duration(seconds: 10));
 
     // Stop scanning
-    log("Stop scanning");
+    log("Stop scanning", name: "Bluetooth");
     await FlutterBluePlus.stopScan();
     subscription.cancel();
     if (_device != null) {
@@ -142,29 +154,31 @@ class _MyHomePageState extends State<MyHomePage> {
       log("No device found");
       return;
     }
-    log("Connecting to ${_device!.localName}");
-    _device!.connectionState.listen((BluetoothConnectionState event) async {
+    log("Connecting to ${_device!.localName}", name: "Bluetooth");
+    _connectionStateSubscription =
+        _device!.connectionState.listen((BluetoothConnectionState event) async {
       if (event == BluetoothConnectionState.connected) {
-        log("Connected");
-        log("Services discovered");
+        log("Services discovered: ", name: "Bluetooth");
         // Note: You must call this again if disconnected!
         List<BluetoothService> services = await _device!.discoverServices();
         services.forEach((service) {
-          log("Service: ${service.uuid}");
+          log("Service: ${service.uuid}", name: "Bluetooth");
           if (service.uuid.toByteArray().sublist(0, 4).toString() ==
-              ServiceUUID.toString()) {
+              StationConfig.ServiceUUID.toString()) {
             service.characteristics.forEach((characteristic) {
-              log("Characteristic: ${characteristic.uuid}");
+              log("Characteristic: ${characteristic.uuid}", name: "Bluetooth");
 
               if (characteristic.uuid.toByteArray().sublist(0, 4).toString() ==
-                  CharacteristicUUID.toString()) {
-                log("Found characteristic");
-                characteristic.setNotifyValue(true);
-                characteristic.onValueReceived.listen((value) {
-                  log("Received: ${value.map((e) => String.fromCharCode(e)).toString()}");
+                  StationConfig.CharacteristicUUID.toString()) {
+                log("Found WeatherStation service and characteristic: ${characteristic.uuid}",
+                    name: "Bluetooth");
+                setState(() {
+                  _service = service;
+                  _characteristic = characteristic;
+                  _connectionStateSubscription?.cancel();
+                  _connectionStateSubscription = null;
                 });
-                characteristic
-                    .write([0x41, 0x41, 0x41, 0x41], withoutResponse: true);
+                _connectCharacteristic();
               }
             });
             return;
@@ -172,9 +186,38 @@ class _MyHomePageState extends State<MyHomePage> {
         });
       }
     });
-    await _device!.connect();
 
-    // await _device!.disconnect();
+    await _device!.connect();
+  }
+
+  Future<void> _connectCharacteristic() async {
+    if (_characteristic == null) {
+      log("No characteristic found");
+      return;
+    }
+    log("Connecting to ${_characteristic!.uuid}", name: "Bluetooth");
+    _characteristic!.setNotifyValue(true);
+    _valueSubscription = _characteristic!.onValueReceived.listen((value) {
+      log("Received: ${value.map((e) => String.fromCharCode(e)).toString()}",
+          name: "Bluetooth");
+    });
+    _characteristic!.write([0x41, 0x41, 0x41, 0x41], withoutResponse: true);
+  }
+
+  Future<void> _disconnectDevice() async {
+    if (_device == null) {
+      log("No device found");
+      return;
+    }
+    log("Disconnecting from ${_device!.localName}", name: "Bluetooth");
+    await _device!.disconnect();
+    _valueSubscription?.cancel();
+    setState(() {
+      _device = null;
+      _valueSubscription = null;
+      _characteristic = null;
+      _service = null;
+    });
   }
 
   @override
@@ -214,15 +257,20 @@ class _MyHomePageState extends State<MyHomePage> {
           // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            TextButton(
-                onPressed: _scanBluetoothAndConnect, child: const Text("Scan")),
+            (_device != null)
+                ? Text(
+                    'Connected to ${_device!.localName}',
+                  )
+                : const Text(
+                    'No device connected',
+                  ),
+            (_device == null)
+                ? TextButton(
+                    onPressed: _scanBluetoothAndConnect,
+                    child: const Text("Scan & Connect"))
+                : TextButton(
+                    onPressed: _disconnectDevice,
+                    child: const Text("Disconnect")),
           ],
         ),
       ),
