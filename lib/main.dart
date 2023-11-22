@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
     FlutterBluePlus.setLogLevel(LogLevel.debug);
 
     return MaterialApp(
-      title: StationConfig.Title,
+      title: StationConfig.appTitle,
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -125,7 +125,7 @@ class _MyHomePageState extends State<MyHomePage> {
         if (r.device.localName.isEmpty) {
           continue;
         }
-        if (r.device.localName == StationConfig.BLEDeviceName) {
+        if (r.device.localName == StationConfig.bleDeviceName) {
           log('Found BLE device -> Name: ${r.device.localName}, Type: ${r.device.type}',
               name: 'Bluetooth');
           _device = r.device;
@@ -164,12 +164,12 @@ class _MyHomePageState extends State<MyHomePage> {
         services.forEach((service) {
           log("Service: ${service.uuid}", name: "Bluetooth");
           if (service.uuid.toByteArray().sublist(0, 4).toString() ==
-              StationConfig.ServiceUUID.toString()) {
+              StationConfig.serviceUUID.toString()) {
             service.characteristics.forEach((characteristic) {
               log("Characteristic: ${characteristic.uuid}", name: "Bluetooth");
 
               if (characteristic.uuid.toByteArray().sublist(0, 4).toString() ==
-                  StationConfig.CharacteristicUUID.toString()) {
+                  StationConfig.characteristicUUID.toString()) {
                 log("Found WeatherStation service and characteristic: ${characteristic.uuid}",
                     name: "Bluetooth");
                 setState(() {
