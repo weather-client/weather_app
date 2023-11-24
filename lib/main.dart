@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:weather_station/config.dart';
+import 'package:weather_station/schemas.dart';
+import 'package:weather_station/config_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -39,7 +41,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const MyHomePage(title: 'Weather Station'),
     );
   }
 }
@@ -63,23 +65,17 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  final StationConfig _config = StationConfig();
+  final WeatherData _weatherData = WeatherData();
   BluetoothDevice? _device;
   BluetoothService? _service;
   BluetoothCharacteristic? _characteristic;
   StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
   StreamSubscription<List<int>>? _valueSubscription;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+  final StreamController<String> _consumerStreamController =
+      StreamController<String>();
+  Stream<String>? _consumerStream;
+  String _inputBuffer = "";
 
   Future<void> _enableBluetooth() async {
     // check adapter availability
@@ -190,6 +186,23 @@ class _MyHomePageState extends State<MyHomePage> {
     await _device!.connect();
   }
 
+  void _consumeInputBuffer(String? input) {
+    if (input != null) {
+      _inputBuffer += input;
+    }
+    while (_inputBuffer.contains("\n")) {
+      String message = _inputBuffer.substring(0, _inputBuffer.indexOf("\n"));
+      _inputBuffer = _inputBuffer.substring(_inputBuffer.indexOf("\n") + 1);
+
+      message = message.trim();
+      if (message == "AT") {
+        _characteristic!.write("OK\r\n".codeUnits, withoutResponse: true);
+        log('Response: ${"OK\r\n".codeUnits}', name: 'Bluetooth');
+      }
+      _consumerStreamController.add(message);
+    }
+  }
+
   Future<void> _connectCharacteristic() async {
     if (_characteristic == null) {
       log("No characteristic found");
@@ -198,8 +211,7 @@ class _MyHomePageState extends State<MyHomePage> {
     log("Connecting to ${_characteristic!.uuid}", name: "Bluetooth");
     _characteristic!.setNotifyValue(true);
     _valueSubscription = _characteristic!.onValueReceived.listen((value) {
-      log("Received: ${value.map((e) => String.fromCharCode(e)).toString()}",
-          name: "Bluetooth");
+      _consumeInputBuffer(value.map((e) => String.fromCharCode(e)).join());
     });
     _characteristic!.write([0x41, 0x41, 0x41, 0x41], withoutResponse: true);
   }
@@ -217,6 +229,147 @@ class _MyHomePageState extends State<MyHomePage> {
       _valueSubscription = null;
       _characteristic = null;
       _service = null;
+    });
+  }
+
+  void _configureDevice() {
+    if (_characteristic != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => ConfigScreen(
+                  device: _device as BluetoothDevice,
+                  characteristic: _characteristic as BluetoothCharacteristic,
+                  consumerStream: _consumerStream as Stream<String>,
+                  config: _config,
+                )),
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _consumerStream = _consumerStreamController.stream.asBroadcastStream();
+    _consumerStream!.listen((event) {
+      log("Event: $event", name: "Bluetooth");
+      if (event.startsWith('AT+CONFIG=')) {
+        String message = event.substring('AT+CONFIG='.length);
+        bool assignMark = message.contains('=');
+        String name =
+            assignMark ? message.substring(0, message.indexOf('=')) : message;
+        String value =
+            assignMark ? message.substring(message.indexOf('=') + 1) : "";
+        log("Config: $name=$value", name: "Bluetooth");
+        switch (name) {
+          case "station.id":
+            _config.stationId = value;
+            break;
+          case "station.sendInterval":
+            _config.sendInterval = int.parse(value);
+            break;
+          case "location.connected":
+            _config.location!.connected = value == "1";
+            break;
+          case "location.gps":
+            _config.location!.useGps = value == "1";
+            break;
+          case "location.lat":
+            _config.location!.latitude = double.parse(value);
+            break;
+          case "location.lon":
+            _config.location!.longitude = double.parse(value);
+            break;
+          case "wifi.enabled":
+            _config.wifi!.enabled = value == "1";
+            break;
+          case "wifi.connected":
+            _config.wifi!.connected = value == "1";
+            break;
+          case "wifi.ssid":
+            _config.wifi!.ssid = value;
+            break;
+          case "wifi.pwd":
+            _config.wifi!.password = value;
+            break;
+          case "eth.enabled":
+            _config.ethernet!.enabled = value == "1";
+            break;
+          case "eth.connected":
+            _config.ethernet!.connected = value == "1";
+            break;
+          case "eth.ip":
+            _config.ethernet!.ip = value;
+            break;
+          case "eth.subnet":
+            _config.ethernet!.mask = value;
+            break;
+          case "eth.gateway":
+            _config.ethernet!.gateway = value;
+            break;
+          case "eth.dns":
+            _config.ethernet!.dns = value;
+            break;
+          case "lora.enabled":
+            _config.lora!.enabled = value == "1";
+            break;
+          case "lora.connected":
+            _config.lora!.connected = value == "1";
+            break;
+          case "lora.devEui":
+            _config.lora!.devEui = value;
+            break;
+          case "lora.appEui":
+            _config.lora!.appEui = value;
+            break;
+          case "lora.appKey":
+            _config.lora!.appKey = value;
+            break;
+          case "sim.enabled":
+            _config.cellular!.enabled = value == "1";
+            break;
+          case "sim.connected":
+            _config.cellular!.connected = value == "1";
+            break;
+          case "sim.apn":
+            _config.cellular!.apn = value;
+            break;
+          case "sim.user":
+            _config.cellular!.user = value;
+            break;
+          case "sim.pwd":
+            _config.cellular!.password = value;
+            break;
+          case "done":
+            _config.doneUpdating();
+            log('Configuration done}', name: "Bluetooth");
+            break;
+          default:
+            log("Unknown config: $name=$value", name: "Bluetooth");
+        }
+      } else if (event.startsWith('AT+DATA=')) {
+        // Format example: {"loc":{"lat":52.202381,"lon":21.035158},"data":{"ws":[0.10],"wd":["NE"],"a":[{"t":23.70,"h":62.00}]}}
+        String message = event.substring('AT+DATA='.length);
+        log("Data: $message", name: "Bluetooth");
+        Map<String, dynamic> data = jsonDecode(message);
+        _weatherData.location.latitude = data['loc']['lat'];
+        _weatherData.location.longitude = data['loc']['lon'];
+        // List of wind speeds
+        _weatherData.windSpeeds = (data['data']['ws'] as List<dynamic>)
+            .map((e) => e as double)
+            .toList();
+        // List of wind directions
+        _weatherData.windDirections = (data['data']['wd'] as List<dynamic>)
+            .map((e) => e as String)
+            .toList();
+        // List of air data
+        _weatherData.airDatas = (data['data']['a'] as List<dynamic>)
+            .map((e) => AirData(
+                temperature: e['t'] as double, humidity: e['h'] as double))
+            .toList();
+        // _weatherData.windDirections = data['data']['wd'];
+        // _weatherData.airDatas = data['data']['a'];
+      }
     });
   }
 
@@ -274,11 +427,13 @@ class _MyHomePageState extends State<MyHomePage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _enableBluetooth,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      floatingActionButton: (_device != null)
+          ? FloatingActionButton(
+              onPressed: _configureDevice,
+              tooltip: 'Configure',
+              child: const Icon(Icons.tune),
+            )
+          : null, // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
