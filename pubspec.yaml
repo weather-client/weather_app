@@ -39,6 +39,9 @@ dependencies:
   # The following package is required for Bluetooth Low Energy (BLE) functionality
   flutter_blue_plus: 1.14.24
 
+  # The following package is required for the opening of URLs
+  url_launcher: ^6.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

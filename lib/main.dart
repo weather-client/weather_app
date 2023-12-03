@@ -5,6 +5,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:weather_station/schemas.dart';
 import 'package:weather_station/config_screen.dart';
 
@@ -103,6 +104,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _scanBluetoothAndConnect() async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Scanning for BLE device'),
+    ));
+
     // check adapter state before scanning
     _enableBluetooth();
 
@@ -143,6 +148,15 @@ class _MyHomePageState extends State<MyHomePage> {
     if (_device != null) {
       await _connectBluetooth();
     }
+
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_device == null
+            ? 'No device found'
+            : 'Connected to ${_device!.localName}'),
+      ),
+    );
   }
 
   Future<void> _connectBluetooth() async {
@@ -150,7 +164,7 @@ class _MyHomePageState extends State<MyHomePage> {
       log("No device found");
       return;
     }
-    log("Connecting to ${_device!.localName}", name: "Bluetooth");
+    log("Connecting to device ${_device!.localName}", name: "Bluetooth");
     _connectionStateSubscription =
         _device!.connectionState.listen((BluetoothConnectionState event) async {
       if (event == BluetoothConnectionState.connected) {
@@ -208,7 +222,8 @@ class _MyHomePageState extends State<MyHomePage> {
       log("No characteristic found");
       return;
     }
-    log("Connecting to ${_characteristic!.uuid}", name: "Bluetooth");
+    log("Connecting to characteristic ${_characteristic!.uuid}",
+        name: "Bluetooth");
     _characteristic!.setNotifyValue(true);
     _valueSubscription = _characteristic!.onValueReceived.listen((value) {
       _consumeInputBuffer(value.map((e) => String.fromCharCode(e)).join());
@@ -247,6 +262,13 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  Future<void> openLink(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri)) {
+      log("Could not launch $url", name: "MainScreen");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -261,115 +283,130 @@ class _MyHomePageState extends State<MyHomePage> {
         String value =
             assignMark ? message.substring(message.indexOf('=') + 1) : "";
         log("Config: $name=$value", name: "Bluetooth");
-        switch (name) {
-          case "station.id":
-            _config.stationId = value;
-            break;
-          case "station.sendInterval":
-            _config.sendInterval = int.parse(value);
-            break;
-          case "location.connected":
-            _config.location!.connected = value == "1";
-            break;
-          case "location.gps":
-            _config.location!.useGps = value == "1";
-            break;
-          case "location.lat":
-            _config.location!.latitude = double.parse(value);
-            break;
-          case "location.lon":
-            _config.location!.longitude = double.parse(value);
-            break;
-          case "wifi.enabled":
-            _config.wifi!.enabled = value == "1";
-            break;
-          case "wifi.connected":
-            _config.wifi!.connected = value == "1";
-            break;
-          case "wifi.ssid":
-            _config.wifi!.ssid = value;
-            break;
-          case "wifi.pwd":
-            _config.wifi!.password = value;
-            break;
-          case "eth.enabled":
-            _config.ethernet!.enabled = value == "1";
-            break;
-          case "eth.connected":
-            _config.ethernet!.connected = value == "1";
-            break;
-          case "eth.ip":
-            _config.ethernet!.ip = value;
-            break;
-          case "eth.subnet":
-            _config.ethernet!.mask = value;
-            break;
-          case "eth.gateway":
-            _config.ethernet!.gateway = value;
-            break;
-          case "eth.dns":
-            _config.ethernet!.dns = value;
-            break;
-          case "lora.enabled":
-            _config.lora!.enabled = value == "1";
-            break;
-          case "lora.connected":
-            _config.lora!.connected = value == "1";
-            break;
-          case "lora.devEui":
-            _config.lora!.devEui = value;
-            break;
-          case "lora.appEui":
-            _config.lora!.appEui = value;
-            break;
-          case "lora.appKey":
-            _config.lora!.appKey = value;
-            break;
-          case "sim.enabled":
-            _config.cellular!.enabled = value == "1";
-            break;
-          case "sim.connected":
-            _config.cellular!.connected = value == "1";
-            break;
-          case "sim.apn":
-            _config.cellular!.apn = value;
-            break;
-          case "sim.user":
-            _config.cellular!.user = value;
-            break;
-          case "sim.pwd":
-            _config.cellular!.password = value;
-            break;
-          case "done":
-            _config.doneUpdating();
-            log('Configuration done}', name: "Bluetooth");
-            break;
-          default:
-            log("Unknown config: $name=$value", name: "Bluetooth");
+        try {
+          switch (name) {
+            case "station.id":
+              _config.stationId = value;
+              break;
+            case "station.sendInterval":
+              _config.sendInterval = int.parse(value);
+              break;
+            case "location.connected":
+              _config.location!.connected = value == "1";
+              break;
+            case "location.gps":
+              _config.location!.useGps = value == "1";
+              break;
+            case "location.lat":
+              _config.location!.latitude = double.parse(value);
+              break;
+            case "location.lon":
+              _config.location!.longitude = double.parse(value);
+              break;
+            case "wifi.enabled":
+              _config.wifi!.enabled = value == "1";
+              break;
+            case "wifi.connected":
+              _config.wifi!.connected = value == "1";
+              break;
+            case "wifi.ssid":
+              _config.wifi!.ssid = value;
+              break;
+            case "wifi.pwd":
+              _config.wifi!.password = value;
+              break;
+            case "eth.enabled":
+              _config.ethernet!.enabled = value == "1";
+              break;
+            case "eth.connected":
+              _config.ethernet!.connected = value == "1";
+              break;
+            case "eth.ip":
+              _config.ethernet!.ip = value;
+              break;
+            case "eth.subnet":
+              _config.ethernet!.mask = value;
+              break;
+            case "eth.gateway":
+              _config.ethernet!.gateway = value;
+              break;
+            case "eth.dns":
+              _config.ethernet!.dns = value;
+              break;
+            case "lora.enabled":
+              _config.lora!.enabled = value == "1";
+              break;
+            case "lora.connected":
+              _config.lora!.connected = value == "1";
+              break;
+            case "lora.devEui":
+              // Only accept character A-Z, a-z, 0-9
+              _config.lora!.devEui =
+                  value.replaceAll(RegExp('[^A-Za-z0-9]'), '');
+              break;
+            case "lora.appEui":
+              _config.lora!.appEui =
+                  value.replaceAll(RegExp(r'[^A-Za-z0-9]'), "");
+              break;
+            case "lora.appKey":
+              _config.lora!.appKey =
+                  value.replaceAll(RegExp(r'[^A-Za-z0-9]'), "");
+              break;
+            case "sim.enabled":
+              _config.cellular!.enabled = value == "1";
+              break;
+            case "sim.connected":
+              _config.cellular!.connected = value == "1";
+              break;
+            case "sim.apn":
+              _config.cellular!.apn = value;
+              break;
+            case "sim.user":
+              _config.cellular!.user = value;
+              break;
+            case "sim.pwd":
+              _config.cellular!.password = value;
+              break;
+            case "done":
+              _config.doneUpdating();
+              log('Configuration done}', name: "Bluetooth");
+              break;
+            default:
+              log("Unknown config: $name=$value", name: "Bluetooth");
+          }
+        } catch (e) {
+          log("Error parsing config: $e", name: "Bluetooth");
         }
       } else if (event.startsWith('AT+DATA=')) {
         // Format example: {"loc":{"lat":52.202381,"lon":21.035158},"data":{"ws":[0.10],"wd":["NE"],"a":[{"t":23.70,"h":62.00}]}}
         String message = event.substring('AT+DATA='.length);
         log("Data: $message", name: "Bluetooth");
         Map<String, dynamic> data = jsonDecode(message);
-        _weatherData.location.latitude = data['loc']['lat'];
-        _weatherData.location.longitude = data['loc']['lon'];
-        // List of wind speeds
-        _weatherData.windSpeeds = (data['data']['ws'] as List<dynamic>)
-            .map((e) => e as double)
-            .toList();
-        // List of wind directions
-        _weatherData.windDirections = (data['data']['wd'] as List<dynamic>)
-            .map((e) => e as String)
-            .toList();
-        // List of air data
-        _weatherData.airDatas = (data['data']['a'] as List<dynamic>)
-            .map((e) => AirData(
-                temperature: e['t'] as double, humidity: e['h'] as double))
-            .toList();
-        // _weatherData.windDirections = data['data']['wd'];
-        // _weatherData.airDatas = data['data']['a'];
+        try {
+          _weatherData.location.latitude = data['loc']['lat'];
+          _weatherData.location.longitude = data['loc']['lon'];
+        } catch (e) {
+          log("Error parsing location: $e", name: "Bluetooth");
+        }
+        try {
+          // List of wind speeds
+          _weatherData.windSpeeds = (data['data']['ws'] as List<dynamic>)
+              .map((e) => e as double)
+              .toList();
+          // List of wind directions
+          _weatherData.windDirections = (data['data']['wd'] as List<dynamic>)
+              .map((e) => e as String)
+              .toList();
+          // List of air data
+          _weatherData.airDatas = (data['data']['a'] as List<dynamic>)
+              .map((e) => AirData(
+                  temperature: e['t'] as double, humidity: e['h'] as double))
+              .toList();
+        } catch (e) {
+          log("Error parsing data: $e", name: "Bluetooth");
+        }
       }
+      setState(() {});
     });
   }
 
@@ -391,42 +428,108 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            (_device != null)
-                ? Text(
-                    'Connected to ${_device!.localName}',
+      body: ListenableBuilder(
+          listenable: _config,
+          builder: (BuildContext context, Widget? child) {
+            return (_device == null)
+                ? Center(
+                    // Center is a layout widget. It takes a single child and positions it
+                    // in the middle of the parent.
+                    child: Column(
+                      // Column is also a layout widget. It takes a list of children and
+                      // arranges them vertically. By default, it sizes itself to fit its
+                      // children horizontally, and tries to be as tall as its parent.
+                      //
+                      // Column has various properties to control how it sizes itself and
+                      // how it positions its children. Here we use mainAxisAlignment to
+                      // center the children vertically; the main axis here is the vertical
+                      // axis because Columns are vertical (the cross axis would be
+                      // horizontal).
+                      //
+                      // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
+                      // action in the IDE, or press "p" in the console), to see the
+                      // wireframe for each widget.
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        const Text(
+                          'No device connected',
+                        ),
+                        TextButton(
+                            onPressed: _scanBluetoothAndConnect,
+                            child: const Text("Scan & Connect")),
+                      ],
+                    ),
                   )
-                : const Text(
-                    'No device connected',
-                  ),
-            (_device == null)
-                ? TextButton(
-                    onPressed: _scanBluetoothAndConnect,
-                    child: const Text("Scan & Connect"))
-                : TextButton(
-                    onPressed: _disconnectDevice,
-                    child: const Text("Disconnect")),
-          ],
-        ),
-      ),
+                : Column(children: [
+                    Card(
+                      child: Column(children: [
+                        ListTile(
+                          title: const Text('Location'),
+                          subtitle: (_weatherData.location.latitude != null &&
+                                  _weatherData.location.longitude != null)
+                              ? Text(
+                                  '${_weatherData.location.latitude}, ${_weatherData.location.longitude}')
+                              : null,
+                          trailing: (_weatherData.location.latitude != null &&
+                                  _weatherData.location.longitude != null)
+                              ? IconButton(
+                                  icon: const Icon(Icons.map),
+                                  onPressed: () => {
+                                        openLink(
+                                            'comgooglemaps://?q=${_weatherData.location.latitude},${_weatherData.location.longitude}')
+                                      })
+                              : null,
+                        ),
+                      ]),
+                    ),
+                    Card(
+                      child: Column(children: [
+                        const ListTile(
+                          title: Text('Wind Speed'),
+                        ),
+                        ...List.generate(
+                            _weatherData.windSpeeds.length,
+                            (index) => ActionChip(
+                                label: Text(
+                                    '${_weatherData.windSpeeds[index].toStringAsFixed(2)} m/s'),
+                                onPressed: () => {})),
+                      ]),
+                    ),
+                    Card(
+                      child: Column(children: [
+                        const ListTile(
+                          title: Text('Wind Direction'),
+                        ),
+                        ...List.generate(
+                            _weatherData.windDirections.length,
+                            (index) => ActionChip(
+                                label: Text(_weatherData.windDirections[index]),
+                                onPressed: () => {})),
+                      ]),
+                    ),
+                    Card(
+                      child: Column(children: [
+                        const ListTile(
+                          title: Text('Air Data'),
+                        ),
+                        ...List.generate(
+                            _weatherData.airDatas.length,
+                            (index) => ActionChip(
+                                label: Text((_weatherData
+                                                .airDatas[index].temperature !=
+                                            null &&
+                                        _weatherData.airDatas[index].humidity !=
+                                            null)
+                                    ? '${_weatherData.airDatas[index].temperature!.toStringAsFixed(2)}°C, ${_weatherData.airDatas[index].humidity!.toStringAsFixed(2)}%'
+                                    : ""),
+                                onPressed: () => {})),
+                      ]),
+                    ),
+                    OutlinedButton(
+                        onPressed: _disconnectDevice,
+                        child: const Text("Disconnect"))
+                  ]);
+          }),
       floatingActionButton: (_device != null)
           ? FloatingActionButton(
               onPressed: _configureDevice,

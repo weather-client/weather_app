@@ -55,5 +55,9 @@
 	<string>Need Location permission</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Need Location permission</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+	<string>comgooglemaps</string>
+	</array> 
 </dict>
 </plist>
